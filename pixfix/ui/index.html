@@ -82,11 +82,15 @@
                   <div class="guide-step"><span class="guide-num">&bull;</span> <span class="guide-text"><strong>Remove backgrounds</strong> &mdash; auto-detect the background color and make it transparent. Supports flood fill from edges or global removal.</span></div>
                   <div class="guide-step"><span class="guide-num">&bull;</span> <span class="guide-text"><strong>Resize output</strong> &mdash; upscale sprites for game engines (2x, 3x&hellip;) or set exact dimensions.</span></div>
                   <div class="guide-step"><span class="guide-num">&bull;</span> <span class="guide-text"><strong>Batch process</strong> &mdash; run the same pipeline on a folder of images at once.</span></div>
-                  <div class="guide-step"><span class="guide-num">&bull;</span> <span class="guide-text"><strong>Sprite sheets</strong> &mdash; split a sheet into tiles (fixed grid or auto-detect), normalize each tile, and reassemble.</span></div>
+                  <div class="guide-step"><span class="guide-num">&bull;</span> <span class="guide-text"><strong>Sprite sheets</strong> &mdash; split a sheet into tiles (fixed grid or auto-detect from a white background), normalize each tile, reassemble, and generate animated GIFs.</span></div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+        <div class="welcome-loading" id="welcome-loading" style="display:none">
+          <div class="welcome-loading-spinner"></div>
+          <div class="welcome-loading-text">Loading image...</div>
         </div>
         <div class="image-pane" id="original-pane" style="display:none">
           <div class="pane-header">Original <span class="dim" id="original-dims"></span></div>
@@ -98,10 +102,6 @@
           <div class="pane-header">Processed <span class="dim" id="processed-dims"></span></div>
           <div class="image-container">
             <img id="processed-img" alt="Processed">
-            <div class="processing-overlay" id="preview-spinner">
-              <div class="spinner"></div>
-              <span class="processing-overlay-text">Processing...</span>
-            </div>
           </div>
         </div>
       </div>
@@ -112,10 +112,6 @@
         <div class="settings-preview">
           <img id="settings-preview-img" alt="Preview" style="display:none">
           <span id="settings-no-image" style="color:var(--overlay0);font-size:12px">No image loaded</span>
-          <div class="processing-overlay" id="settings-spinner">
-            <div class="spinner"></div>
-            <span class="processing-overlay-text">Processing...</span>
-          </div>
         </div>
       </div>
 
@@ -146,7 +142,10 @@
 
     <!-- Status bar -->
     <div class="statusbar">
-      <span class="status-msg" id="status-msg">Press 'o' to open an image</span>
+      <div class="status-left">
+        <div class="status-spinner" id="status-spinner"></div>
+        <span class="status-msg" id="status-msg">Press 'o' to open an image</span>
+      </div>
       <div class="shortcut-bar">
         <span><kbd>o</kbd> Open</span>
         <span><kbd>s</kbd> Save</span>

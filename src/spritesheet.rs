@@ -1,5 +1,7 @@
 //! Sprite sheet processing: split, normalize, and reassemble.
 
+use std::collections::VecDeque;
+
 use anyhow::Result;
 use image::{GenericImageView, Rgba, RgbaImage};
 use rayon::prelude::*;
@@ -418,6 +420,11 @@ pub fn tight_bbox(
 
 /// Extract cells from row/col band intersections, trim each to tight bbox.
 /// Returns (tiles, uniform_tile_w, uniform_tile_h) with padding applied.
+///
+/// Sprites in the same row are stabilized: their positions relative to their
+/// cell regions are preserved so animation frames don't jitter. Sprites are
+/// bottom-aligned (feet stay planted) and horizontally anchored to their cell
+/// center.
 fn extract_cells(
     image: &RgbaImage,
     row_bands: &[(u32, u32)],
@@ -427,56 +434,169 @@ fn extract_cells(
     min_size: u32,
     pad: u32,
 ) -> (Vec<Tile>, u32, u32) {
-    let mut bboxes: Vec<(u32, u32, BBox)> = Vec::new();
+    // Collect bboxes along with their cell regions for relative positioning
+    struct CellInfo {
+        col: u32,
+        row: u32,
+        bbox: BBox,
+        cell: BBox,
+    }
+
+    let mut cells: Vec<CellInfo> = Vec::new();
 
     for (ri, &(ry, rh)) in row_bands.iter().enumerate() {
         for (ci, &(cx, cw)) in col_bands.iter().enumerate() {
-            let region = BBox {
+            let cell = BBox {
                 x: cx,
                 y: ry,
                 w: cw,
                 h: rh,
             };
-            if let Some(bbox) = tight_bbox(image, region, bg, tolerance) {
+            if let Some(bbox) = tight_bbox(image, cell, bg, tolerance) {
                 if bbox.w >= min_size && bbox.h >= min_size {
-                    bboxes.push((ci as u32, ri as u32, bbox));
+                    cells.push(CellInfo {
+                        col: ci as u32,
+                        row: ri as u32,
+                        bbox,
+                        cell,
+                    });
                 }
             }
         }
     }
 
-    if bboxes.is_empty() {
+    if cells.is_empty() {
         return (Vec::new(), 0, 0);
     }
 
-    // Find max sprite dimensions for uniform sizing
-    let max_w = bboxes.iter().map(|(_, _, b)| b.w).max().unwrap();
-    let max_h = bboxes.iter().map(|(_, _, b)| b.h).max().unwrap();
-    let tile_w = max_w + pad * 2;
-    let tile_h = max_h + pad * 2;
+    // Per-row stabilization: compute relative bbox positions within each cell,
+    // then find the union envelope per row. This ensures all frames in an
+    // animation row share the same coordinate system.
+    //
+    // Relative positioning:
+    //   rel_left   = bbox.x - cell_center_x   (signed offset from cell center)
+    //   rel_bottom = cell_bottom - bbox_bottom  (distance from cell bottom)
+    //
+    // The union envelope for a row is the widest extent of these relative
+    // positions across all frames.
+    use std::collections::HashMap;
+    struct RowEnvelope {
+        /// Leftmost relative offset from cell center (negative = left of center)
+        min_rel_left: i32,
+        /// Rightmost relative offset from cell center
+        max_rel_right: i32,
+        /// Maximum height across all frames
+        max_h: u32,
+        /// Maximum distance from cell bottom to sprite bottom
+        max_bottom_gap: i32,
+    }
 
-    let tiles: Vec<Tile> = bboxes
+    let mut row_envelopes: HashMap<u32, RowEnvelope> = HashMap::new();
+
+    for c in &cells {
+        let cell_cx = c.cell.x as i32 + c.cell.w as i32 / 2;
+        let rel_left = c.bbox.x as i32 - cell_cx;
+        let rel_right = (c.bbox.x + c.bbox.w) as i32 - cell_cx;
+        let cell_bottom = (c.cell.y + c.cell.h) as i32;
+        let bbox_bottom = (c.bbox.y + c.bbox.h) as i32;
+        let bottom_gap = cell_bottom - bbox_bottom;
+
+        let env = row_envelopes.entry(c.row).or_insert(RowEnvelope {
+            min_rel_left: rel_left,
+            max_rel_right: rel_right,
+            max_h: c.bbox.h,
+            max_bottom_gap: bottom_gap,
+        });
+        env.min_rel_left = env.min_rel_left.min(rel_left);
+        env.max_rel_right = env.max_rel_right.max(rel_right);
+        env.max_h = env.max_h.max(c.bbox.h);
+        env.max_bottom_gap = env.max_bottom_gap.min(bottom_gap);
+    }
+
+    // Global tile size: max envelope across all rows
+    let env_max_w = row_envelopes
+        .values()
+        .map(|e| (e.max_rel_right - e.min_rel_left) as u32)
+        .max()
+        .unwrap();
+    let env_max_h = row_envelopes
+        .values()
+        .map(|e| e.max_h)
+        .max()
+        .unwrap();
+    let tile_w = env_max_w + pad * 2;
+    let tile_h = env_max_h + pad * 2;
+
+    let tiles: Vec<Tile> = cells
         .into_iter()
-        .map(|(col, row, bbox)| {
+        .map(|c| {
+            let env = &row_envelopes[&c.row];
+
             // Create a transparent tile of uniform size
             let mut tile_img = RgbaImage::from_pixel(tile_w, tile_h, Rgba([0, 0, 0, 0]));
 
-            // Center the sprite within the tile
-            let offset_x = pad + (max_w - bbox.w) / 2;
-            let offset_y = pad + (max_h - bbox.h) / 2;
+            // Position the sprite using its relative offset from cell center,
+            // anchored to the row's envelope. Bottom-aligned within the tile.
+            let cell_cx = c.cell.x as i32 + c.cell.w as i32 / 2;
+            let rel_left = c.bbox.x as i32 - cell_cx;
+            let offset_x = pad as i32 + (rel_left - env.min_rel_left);
+            let offset_y = pad as i32 + (env_max_h as i32 - c.bbox.h as i32);
 
-            for sy in 0..bbox.h {
-                for sx in 0..bbox.w {
-                    let pixel = *image.get_pixel(bbox.x + sx, bbox.y + sy);
-                    if !is_autosplit_bg(pixel, bg, tolerance) {
-                        tile_img.put_pixel(offset_x + sx, offset_y + sy, pixel);
+            // Copy all pixels from the bounding box into the tile
+            let ox = offset_x.max(0) as u32;
+            let oy = offset_y.max(0) as u32;
+            for sy in 0..c.bbox.h {
+                for sx in 0..c.bbox.w {
+                    let pixel = *image.get_pixel(c.bbox.x + sx, c.bbox.y + sy);
+                    tile_img.put_pixel(ox + sx, oy + sy, pixel);
+                }
+            }
+
+            // Flood-fill from the edges of the tile to remove only background
+            // pixels that are connected to the border. This preserves white
+            // pixels inside the sprite (e.g., eyes, highlights).
+            let tw = tile_w as usize;
+            let th = tile_h as usize;
+            let mut visited = vec![false; tw * th];
+            let mut queue = VecDeque::new();
+
+            // Seed from all border pixels of the tile
+            for x in 0..tile_w {
+                for &y in &[0, tile_h - 1] {
+                    let idx = y as usize * tw + x as usize;
+                    if !visited[idx] && is_autosplit_bg(*tile_img.get_pixel(x, y), bg, tolerance) {
+                        visited[idx] = true;
+                        queue.push_back((x, y));
+                    }
+                }
+            }
+            for y in 1..tile_h.saturating_sub(1) {
+                for &x in &[0, tile_w - 1] {
+                    let idx = y as usize * tw + x as usize;
+                    if !visited[idx] && is_autosplit_bg(*tile_img.get_pixel(x, y), bg, tolerance) {
+                        visited[idx] = true;
+                        queue.push_back((x, y));
+                    }
+                }
+            }
+
+            // BFS: spread to adjacent background pixels
+            while let Some((x, y)) = queue.pop_front() {
+                tile_img.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+                    if nx < tile_w && ny < tile_h {
+                        let idx = ny as usize * tw + nx as usize;
+                        if !visited[idx] && is_autosplit_bg(*tile_img.get_pixel(nx, ny), bg, tolerance) {
+                            visited[idx] = true;
+                            queue.push_back((nx, ny));
+                        }
                     }
                 }
             }
 
             Tile {
-                col,
-                row,
+                col: c.col,
+                row: c.row,
                 image: tile_img,
             }
         })

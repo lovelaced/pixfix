@@ -582,8 +582,8 @@ fn sheet_preview(
         }
         "auto" => {
             let auto_config = spritesheet::AutoSplitConfig {
-                bg_color: None,
-                tolerance: 0.05,
+                bg_color: Some([255, 255, 255]),
+                tolerance: 0.10,
                 separator_threshold: separator_threshold.unwrap_or(0.90),
                 min_sprite_size: min_sprite_size.unwrap_or(8),
                 pad: pad.unwrap_or(0),
@@ -662,8 +662,8 @@ fn sheet_process(
         }
         "auto" => {
             let auto_config = spritesheet::AutoSplitConfig {
-                bg_color: None,
-                tolerance: 0.05,
+                bg_color: Some([255, 255, 255]),
+                tolerance: 0.10,
                 separator_threshold: separator_threshold.unwrap_or(0.90),
                 min_sprite_size: min_sprite_size.unwrap_or(8),
                 pad: pad.unwrap_or(0),

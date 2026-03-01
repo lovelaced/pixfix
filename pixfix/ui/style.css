@@ -265,6 +265,31 @@ html, body {
   font-size: 12px;
 }
 
+/* ── Welcome loading screen ── */
+.welcome-loading {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 16px;
+}
+
+.welcome-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--surface2);
+  border-top-color: var(--mauve);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.welcome-loading-text {
+  color: var(--overlay1);
+  font-size: 14px;
+}
+
 .welcome-columns kbd {
   display: inline-block;
   padding: 1px 5px;
@@ -594,6 +619,27 @@ html, body {
   min-height: 24px;
 }
 
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-spinner {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface2);
+  border-top-color: var(--yellow);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+.status-spinner.active {
+  display: block;
+}
+
 .status-msg {
   color: var(--subtext0);
 }
@@ -659,47 +705,9 @@ html, body {
   color: var(--yellow);
 }
 
-/* ── Processing overlay ── */
-.image-container,
-.settings-preview {
-  position: relative;
-}
-
-.processing-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(17, 17, 27, 0.8);
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  z-index: 10;
-}
-
-.processing-overlay.active {
-  display: flex;
-}
-
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 2px solid var(--surface2);
-  border-top-color: var(--mauve);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
+/* ── Spinner keyframe (used by status bar and welcome loading) ── */
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.processing-overlay-text {
-  color: var(--overlay1);
-  font-size: 11px;
 }
 
 /* ── Drag and drop overlay ── */

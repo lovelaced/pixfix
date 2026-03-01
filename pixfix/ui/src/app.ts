@@ -598,16 +598,24 @@ function setStatus(msg: string, type: string = ''): void {
   const el = document.getElementById('status-msg')!;
   el.textContent = msg;
   el.className = 'status-msg' + (type ? ' ' + type : '');
+  // Show/hide status bar spinner based on processing state
+  const spinner = document.getElementById('status-spinner')!;
+  if (type === 'processing') {
+    spinner.classList.add('active');
+  } else {
+    spinner.classList.remove('active');
+  }
 }
 
-function showSpinners(): void {
-  document.getElementById('preview-spinner')?.classList.add('active');
-  document.getElementById('settings-spinner')?.classList.add('active');
+function showWelcomeLoading(): void {
+  const welcome = document.getElementById('welcome')!;
+  const loading = document.getElementById('welcome-loading')!;
+  welcome.style.display = 'none';
+  loading.style.display = 'flex';
 }
 
-function hideSpinners(): void {
-  document.getElementById('preview-spinner')?.classList.remove('active');
-  document.getElementById('settings-spinner')?.classList.remove('active');
+function hideWelcomeLoading(): void {
+  document.getElementById('welcome-loading')!.style.display = 'none';
 }
 
 function switchTab(name: string): void {
@@ -1096,8 +1104,12 @@ async function loadImageBlob(which: string): Promise<string> {
 }
 
 async function openImage(path: string): Promise<void> {
-  setStatus('Loading...', 'processing');
-  showSpinners();
+  setStatus('Loading image...', 'processing');
+  // Show prominent loading on the welcome screen if it's visible
+  const wasOnWelcome = document.getElementById('welcome')!.style.display !== 'none';
+  if (wasOnWelcome) {
+    showWelcomeLoading();
+  }
   try {
     const info = await invoke<ImageInfo>('open_image', { path });
     state.imageLoaded = true;
@@ -1111,6 +1123,7 @@ async function openImage(path: string): Promise<void> {
     const fname = path.split('/').pop()!.split('\\').pop()!;
     document.getElementById('filename')!.textContent = fname;
 
+    hideWelcomeLoading();
     document.getElementById('welcome')!.style.display = 'none';
     document.getElementById('original-pane')!.style.display = 'flex';
     document.getElementById('processed-pane')!.style.display = 'flex';
@@ -1130,10 +1143,13 @@ async function openImage(path: string): Promise<void> {
 
     renderSettings();
     renderDiagnostics();
-    hideSpinners();
     setStatus(`Loaded \u2014 ${info.width}\u00d7${info.height}, grid=${info.gridSize ?? 'none'}, ${info.uniqueColors} colors`, 'success');
   } catch (e) {
-    hideSpinners();
+    hideWelcomeLoading();
+    // Restore welcome screen on error if that's where we were
+    if (wasOnWelcome) {
+      document.getElementById('welcome')!.style.display = 'flex';
+    }
     setStatus('Error: ' + e, 'error');
   }
 }
@@ -1167,7 +1183,6 @@ async function processImage(): Promise<void> {
   if (!state.imageLoaded || state.processing) return;
   state.processing = true;
   setStatus('Processing...', 'processing');
-  showSpinners();
   const t0 = performance.now();
   try {
     const result = await invoke<ProcessResult>('process', { pc: buildProcessConfig() });
@@ -1186,7 +1201,6 @@ async function processImage(): Promise<void> {
     setStatus('Error: ' + e, 'error');
   } finally {
     state.processing = false;
-    hideSpinners();
   }
 }
 
@@ -1523,7 +1537,7 @@ function renderSheet(): void {
 
   html += '<div class="sheet-section">';
   html += '<div class="sheet-title">Sprite Sheet Processing</div>';
-  html += '<div class="sheet-desc">Split a sprite sheet into individual tiles, run the normalize pipeline on each one, then reassemble into a clean sheet. You can also export each tile as a separate file.</div>';
+  html += '<div class="sheet-desc">Split a sprite sheet into individual tiles, run the normalize pipeline on each one, then reassemble into a clean sheet. You can also export each tile as a separate file or generate an animated GIF.</div>';
   if (!state.imageLoaded) {
     html += '<div class="sheet-desc" style="color:var(--yellow);margin-top:6px">Load an image first in the Preview tab.</div>';
   }
@@ -1539,7 +1553,7 @@ function renderSheet(): void {
   if (state.sheetMode === 'fixed') {
     html += '<div class="sheet-help">Use when your sheet has a uniform grid &mdash; all tiles are the same size with consistent spacing.</div>';
   } else {
-    html += '<div class="sheet-help">Use when tiles are different sizes or irregularly placed. Detects sprites automatically by finding separator rows/columns in the image.</div>';
+    html += '<div class="sheet-help">Use when tiles are different sizes or irregularly placed. Detects sprites automatically by finding separator rows/columns. <strong>Sprites must be on a pure white background.</strong></div>';
   }
   html += '</div>';
 

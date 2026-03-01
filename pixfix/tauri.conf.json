@@ -15,6 +15,7 @@
         "title": "pixfix",
         "width": 1100,
         "height": 750,
+        "maximized": true,
         "resizable": true,
         "minWidth": 800,
         "minHeight": 500
