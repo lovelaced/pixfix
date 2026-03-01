@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create and release (e.g. v0.1.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ── Tests ─────────────────────────────────────────────────────────────
+  # Runs on every push and PR. Gates the release.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+
+  # ── CLI binaries ──────────────────────────────────────────────────────
+  # Pure Rust, no system deps. Runs on push to master, tags, and manual dispatch.
+  build-cli:
+    name: CLI / ${{ matrix.name }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu, name: linux-x86_64 }
+          - { os: macos-latest,   target: aarch64-apple-darwin,     name: macos-arm64 }
+          - { os: macos-latest,   target: x86_64-apple-darwin,      name: macos-x86_64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,   name: windows-x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.target }}
+
+      - name: Build CLI
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf "$GITHUB_WORKSPACE/normalize-pixelart-${{ matrix.name }}.tar.gz" normalize-pixelart
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a "$GITHUB_WORKSPACE/normalize-pixelart-${{ matrix.name }}.zip" normalize-pixelart.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.name }}
+          path: normalize-pixelart-${{ matrix.name }}.*
+          if-no-files-found: error
+
+  # ── Tauri desktop app ─────────────────────────────────────────────────
+  # Needs system libs on Linux, bun for frontend, Tauri CLI for bundling.
+  build-tauri:
+    name: Tauri / ${{ matrix.name }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu, name: linux-x86_64,  bundles: deb,appimage }
+          - { os: macos-latest,   target: aarch64-apple-darwin,     name: macos-arm64,   bundles: dmg }
+          - { os: macos-latest,   target: x86_64-apple-darwin,      name: macos-x86_64,  bundles: dmg }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,   name: windows-x86_64, bundles: msi,nsis }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: tauri-${{ matrix.target }}
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build frontend
+        run: bun build pixfix/ui/src/app.ts --outfile pixfix/ui/app.js --minify
+
+      - name: Build Tauri app
+        shell: bash
+        working-directory: pixfix
+        run: |
+          bunx @tauri-apps/cli@^2 build \
+            --target ${{ matrix.target }} \
+            --bundles ${{ matrix.bundles }} \
+            --config '{"build":{"beforeBuildCommand":""}}'
+
+      - name: Collect bundles
+        shell: bash
+        run: |
+          mkdir -p dist
+          find target -path '*/release/bundle/*' -type f \
+            \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \
+               -o -name '*.msi' -o -name '*-setup.exe' \) \
+            -exec cp {} dist/ \;
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ── GitHub Release ────────────────────────────────────────────────────
+  # Runs on version tags or manual dispatch with a tag input.
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    needs: [test, build-cli, build-tauri]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create and push tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git tag "${{ inputs.tag }}"
+          git push origin "${{ inputs.tag }}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la artifacts/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: artifacts/*
+          generate_release_notes: true

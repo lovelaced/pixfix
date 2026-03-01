@@ -608,10 +608,7 @@ function setStatus(msg: string, type: string = ''): void {
 }
 
 function showWelcomeLoading(): void {
-  const welcome = document.getElementById('welcome')!;
-  const loading = document.getElementById('welcome-loading')!;
-  welcome.style.display = 'none';
-  loading.style.display = 'flex';
+  document.getElementById('welcome-loading')!.style.display = 'flex';
 }
 
 function hideWelcomeLoading(): void {
@@ -1146,10 +1143,6 @@ async function openImage(path: string): Promise<void> {
     setStatus(`Loaded \u2014 ${info.width}\u00d7${info.height}, grid=${info.gridSize ?? 'none'}, ${info.uniqueColors} colors`, 'success');
   } catch (e) {
     hideWelcomeLoading();
-    // Restore welcome screen on error if that's where we were
-    if (wasOnWelcome) {
-      document.getElementById('welcome')!.style.display = 'flex';
-    }
     setStatus('Error: ' + e, 'error');
   }
 }

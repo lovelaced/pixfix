@@ -265,29 +265,28 @@ html, body {
   font-size: 12px;
 }
 
-/* ── Welcome loading screen ── */
+/* ── Welcome loading indicator (inside welcome screen) ── */
 .welcome-loading {
   display: none;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  gap: 16px;
+  gap: 10px;
+  padding: 12px 0;
 }
 
 .welcome-loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--surface2);
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--surface2);
   border-top-color: var(--mauve);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
 
 .welcome-loading-text {
-  color: var(--overlay1);
-  font-size: 14px;
+  color: var(--mauve);
+  font-size: 13px;
 }
 
 .welcome-columns kbd {

@@ -297,7 +297,7 @@ fn build_gif_bytes(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn open_image(path: String, state: State<'_, Mutex<AppState>>) -> Result<ImageInfo, String> {
+async fn open_image(path: String, state: State<'_, Mutex<AppState>>) -> Result<ImageInfo, String> {
     let img = io::load_image(std::path::Path::new(&path)).map_err(|e| e.to_string())?;
 
     // Run pipeline with default config
@@ -328,7 +328,7 @@ fn open_image(path: String, state: State<'_, Mutex<AppState>>) -> Result<ImageIn
 }
 
 #[tauri::command]
-fn process(pc: ProcessConfig, state: State<'_, Mutex<AppState>>) -> Result<ProcessResult, String> {
+async fn process(pc: ProcessConfig, state: State<'_, Mutex<AppState>>) -> Result<ProcessResult, String> {
     let st = state.lock().unwrap();
     let original = st.original.as_ref().ok_or("No image loaded")?.clone();
     drop(st);
@@ -359,7 +359,7 @@ fn process(pc: ProcessConfig, state: State<'_, Mutex<AppState>>) -> Result<Proce
 }
 
 #[tauri::command]
-fn get_image(which: String, state: State<'_, Mutex<AppState>>) -> Result<Vec<u8>, String> {
+async fn get_image(which: String, state: State<'_, Mutex<AppState>>) -> Result<Vec<u8>, String> {
     let st = state.lock().unwrap();
     let img = match which.as_str() {
         "original" => st.original.as_ref().ok_or("No image loaded")?,
@@ -370,7 +370,7 @@ fn get_image(which: String, state: State<'_, Mutex<AppState>>) -> Result<Vec<u8>
 }
 
 #[tauri::command]
-fn save_image(path: String, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+async fn save_image(path: String, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
     let st = state.lock().unwrap();
     let img = st.processed.as_ref().ok_or("No processed image to save")?;
     io::save_image(img, &PathBuf::from(&path)).map_err(|e| e.to_string())
@@ -389,7 +389,7 @@ fn list_palettes() -> Vec<PaletteInfo> {
 }
 
 #[tauri::command]
-fn fetch_lospec(slug: String) -> Result<LospecResult, String> {
+async fn fetch_lospec(slug: String) -> Result<LospecResult, String> {
     let palette = lospec::fetch_lospec_palette(&slug)?;
     Ok(LospecResult {
         name: palette.name,
@@ -546,7 +546,7 @@ struct SheetProcessResult {
 }
 
 #[tauri::command]
-fn sheet_preview(
+async fn sheet_preview(
     mode: String,
     tile_width: Option<u32>,
     tile_height: Option<u32>,
@@ -605,7 +605,7 @@ fn sheet_preview(
 }
 
 #[tauri::command]
-fn sheet_process(
+async fn sheet_process(
     mode: String,
     tile_width: Option<u32>,
     tile_height: Option<u32>,
@@ -693,7 +693,7 @@ fn sheet_process(
 }
 
 #[tauri::command]
-fn sheet_save_tiles(output_dir: String, state: State<'_, Mutex<AppState>>) -> Result<u32, String> {
+async fn sheet_save_tiles(output_dir: String, state: State<'_, Mutex<AppState>>) -> Result<u32, String> {
     let st = state.lock().unwrap();
     let tiles = st.sheet_tiles.as_ref().ok_or("No sheet tiles available")?;
 
@@ -711,7 +711,7 @@ fn sheet_save_tiles(output_dir: String, state: State<'_, Mutex<AppState>>) -> Re
 }
 
 #[tauri::command]
-fn sheet_generate_gif(
+async fn sheet_generate_gif(
     mode: String,
     row: Option<u32>,
     fps: u32,
@@ -729,7 +729,7 @@ fn sheet_generate_gif(
 }
 
 #[tauri::command]
-fn sheet_export_gif(
+async fn sheet_export_gif(
     path: String,
     mode: String,
     row: Option<u32>,
