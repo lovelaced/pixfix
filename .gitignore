@@ -15,6 +15,9 @@ test_images/
 # Allow screenshots for README
 !screenshots/**
 
+# Allow Tauri app icons
+!pixfix/icons/**
+
 # Editor
 *.swp
 *.swo
